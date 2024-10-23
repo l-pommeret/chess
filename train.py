@@ -21,7 +21,7 @@ from transformers import TrainingArguments, Trainer, get_linear_schedule_with_wa
 
 # Définition des hyperparamètres
 num_train_epochs = 50
-learning_rate = 5e-3
+learning_rate = 1e-3
 batch_size = 64  # Ajustez en fonction de la mémoire de votre GPU
 warmup_steps = 500
 
