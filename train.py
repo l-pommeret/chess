@@ -56,3 +56,20 @@ trainer = Trainer(
 print("Début de l'entraînement...")
 trainer.train()
 print("Entraînement terminé!")
+
+# Sauvegarde du modèle
+trainer.save_model()
+
+def generate_game(prompt, max_length=100):
+    input_ids = torch.tensor([tokenizer.encode(prompt)]).to(model.device)
+    output = model.generate(input_ids, max_length=max_length, num_return_sequences=1,
+                            no_repeat_ngram_size=2, do_sample=True, top_k=50, top_p=0.95,
+                            temperature=0.1,
+                            pad_token_id=tokenizer.vocab['<PAD>'])
+    return tokenizer.decode(output[0].tolist())
+
+# Exemple de génération
+prompt = "1.e4 c5 2.Nf3 d6 3.d4"
+
+generated_game = generate_game(prompt)
+print(f"Partie générée : {generated_game}")
