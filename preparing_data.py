@@ -374,8 +374,8 @@ test_size = int(0.005 * len(chess_games))
 train_size = len(chess_games) - test_size
 
 # Création des datasets
-train_dataset = ChessGameDataset(chess_games[:train_size], tokenizer, max_length=388)
-test_dataset = ChessGameDataset(chess_games[train_size:], tokenizer, max_length=388)
+train_dataset = ChessGameDataset(chess_games[:train_size], tokenizer, max_length=600)
+test_dataset = ChessGameDataset(chess_games[train_size:], tokenizer, max_length=600)
 
 # Affichage des tailles des datasets
 print(f"Taille du train dataset : {len(train_dataset)}")

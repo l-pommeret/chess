@@ -7,8 +7,8 @@ from preparing_data import train_dataset, test_dataset, tokenizer
 # Initialisation du modèle
 config = GPT2Config(
     vocab_size=len(tokenizer),  # Utilisez la taille de votre vocabulaire personnalisé
-    n_positions=388,  # Ajustez cela à la longueur maximale de vos séquences
-    n_ctx=388,  # Même valeur que n_positions
+    n_positions=600,  # Ajustez cela à la longueur maximale de vos séquences
+    n_ctx=600,  # Même valeur que n_positions
     n_embd=512,  # Vous pouvez ajuster cela si vous voulez un modèle plus petit ou plus grand
     n_layer=10,
     n_head=8
