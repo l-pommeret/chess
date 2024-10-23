@@ -370,7 +370,7 @@ from torch.utils.data import random_split
 random.shuffle(chess_games)
 
 # Calcul de la taille du test dataset (0,5% des données)
-test_size = int(0.005 * len(chess_games))
+test_size = int(0.0005 * len(chess_games))
 train_size = len(chess_games) - test_size
 
 # Création des datasets
