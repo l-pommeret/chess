@@ -45,7 +45,7 @@ def decompress_zst(input_path, output_path):
     print(f'Fichier décompressé : {output_path}')
 
 # URL du fichier .zst
-file_url = "https://database.lichess.org/standard/lichess_db_standard_rated_2016-09.pgn.zst"
+file_url = "https://database.lichess.org/standard/lichess_db_standard_rated_2013-09.pgn.zst"
 
 # Chemin où sauvegarder le fichier
 save_path = "."
@@ -263,7 +263,7 @@ def read_pgn_file(file_path, max_games=None):
                     # Vérifier tous les critères de filtrage
                     if (current_game and
                         white_elo > 1800 and black_elo > 1800 and
-                        10 <= num_moves <= 40 and
+                        10 <= num_moves <= 60 and
                         time_control is not None and time_control >= 3):  # Ajouter le filtre de temps
                         games.append(optimize_pgn(' '.join(current_game)))
                         filtered_game_count += 1
@@ -289,7 +289,7 @@ def read_pgn_file(file_path, max_games=None):
     # Traiter la dernière partie
     if (current_game and
         white_elo > 1800 and black_elo > 1800 and
-        10 <= num_moves <= 40 and
+        10 <= num_moves <= 60 and
         time_control is not None and time_control >= 3):
         games.append(optimize_pgn(' '.join(current_game)))
         filtered_game_count += 1
@@ -298,7 +298,7 @@ def read_pgn_file(file_path, max_games=None):
     return games, filtered_game_count, total_game_count
 
 # Chemin vers le fichier PGN
-pgn_file_path = "./lichess_db_standard_rated_2016-09.pgn"
+pgn_file_path = "./lichess_db_standard_rated_2013-09.pgn"
 
 # Lire les parties d'échecs
 print("Lecture du fichier PGN...")
