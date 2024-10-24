@@ -1,81 +1,115 @@
-from huggingface_hub import notebook_login
+from huggingface_hub import notebook_login, HfApi, HfFolder, hf_hub_download
 from transformers import AutoModelForCausalLM, AutoConfig
-from huggingface_hub import HfApi, HfFolder
 import shutil
 import os
 import json
+import logging
+from pathlib import Path
 
-# Login to HuggingFace
-notebook_login()
+def setup_logging():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    return logging.getLogger(__name__)
 
-# Chemins
-checkpoint_path = "gpt2-chess-games/checkpoint-1000"
-tokenizer_path = "gpt2-chess-games/tokenizer"
-final_model_path = "final_model"
+def setup_paths(checkpoint_path, tokenizer_path):
+    paths = {
+        'checkpoint': Path(checkpoint_path).resolve(),
+        'tokenizer': Path(tokenizer_path).resolve(),
+        'final_model': Path('final_model').resolve()
+    }
+    paths['final_model'].mkdir(exist_ok=True)
+    return paths
 
-# Créez le répertoire final
-os.makedirs(final_model_path, exist_ok=True)
+def verify_paths(paths, logger):
+    if not paths['checkpoint'].exists():
+        logger.error(f"Checkpoint path does not exist: {paths['checkpoint']}")
+        return False
+    if not paths['tokenizer'].exists():
+        logger.error(f"Tokenizer path does not exist: {paths['tokenizer']}")
+        return False
+    logger.info(f"Working with checkpoint: {paths['checkpoint']}")
+    logger.info(f"Working with tokenizer: {paths['tokenizer']}")
+    return True
 
-# Copiez les fichiers du modèle
-files_to_copy = ['config.json', 'model.safetensors', 'generation_config.json']
-for file in files_to_copy:
-    if os.path.exists(os.path.join(checkpoint_path, file)):
-        shutil.copy(os.path.join(checkpoint_path, file), final_model_path)
+def push_to_hub(model_path, repo_name, tokenizer_file_path, logger):
+    try:
+        # Configuration du token manuellement si nécessaire
+        # os.environ["HF_TOKEN"] = "votre-token-ici"  # Décommentez et ajoutez votre token si nécessaire
+        
+        logger.info(f"Attempting to load model from: {model_path}")
+        
+        # Vérifier si le modèle existe
+        if not Path(model_path).exists():
+            raise FileNotFoundError(f"Model path does not exist: {model_path}")
 
-# Copie des données du tokenizer
-tokenizer_file = "tokenizer_data.json"
-if os.path.exists(os.path.join(tokenizer_path, tokenizer_file)):
-    shutil.copy(
-        os.path.join(tokenizer_path, tokenizer_file),
-        os.path.join(final_model_path, tokenizer_file)
-    )
+        # Charger et pousser le modèle
+        logger.info("Loading model configuration...")
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        
+        logger.info("Loading model...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            config=config,
+            trust_remote_code=True,
+            local_files_only=True
+        )
+        
+        logger.info(f"Pushing model to hub: {repo_name}")
+        model.push_to_hub(repo_name, use_auth_token=True)
 
-# Chargez le modèle
-config = AutoConfig.from_pretrained(checkpoint_path)
-model = AutoModelForCausalLM.from_pretrained(checkpoint_path, config=config)
+        # Upload du tokenizer
+        api = HfApi()
+        if tokenizer_file_path.exists():
+            logger.info(f"Uploading tokenizer from: {tokenizer_file_path}")
+            api.upload_file(
+                path_or_fileobj=str(tokenizer_file_path),
+                path_in_repo=tokenizer_file_path.name,
+                repo_id=repo_name,
+                repo_type="model",
+                use_auth_token=True
+            )
+            logger.info('Tokenizer uploaded successfully')
+        
+        # Vérification des fichiers
+        files = api.list_repo_files(repo_name)
+        logger.info('\nFiles in repository:')
+        for file in files:
+            logger.info(f'- {file}')
+            
+        return True
+    except Exception as e:
+        logger.error(f'Error during hub upload: {str(e)}')
+        return False
 
-# Définissez le nom du dépôt
-repo_name = "Zual/chess"
+def main():
+    # Configuration
+    logger = setup_logging()
+    
+    # Utilisez des chemins absolus ou relatifs corrects
+    CHECKPOINT_PATH = "./gpt2-chess-games/checkpoint-1000"  # Ajustez ce chemin
+    TOKENIZER_PATH = "./gpt2-chess-games/tokenizer"        # Ajustez ce chemin
+    REPO_NAME = "Zual/chess"
+    TOKENIZER_FILE = "tokenizer_data.json"
 
-# Chargez le modèle sur Hugging Face
-model.push_to_hub(repo_name)
+    try:
+        # Login
+        notebook_login()
+        logger.info('Successfully logged in to Hugging Face')
 
-# Upload manuel du fichier du tokenizer
-api = HfApi()
-tokenizer_file_path = os.path.join(final_model_path, tokenizer_file)
-if os.path.exists(tokenizer_file_path):
-    api.upload_file(
-        path_or_fileobj=tokenizer_file_path,
-        path_in_repo=tokenizer_file,
-        repo_id=repo_name,
-        repo_type="model"
-    )
+        # Setup et vérification des chemins
+        paths = setup_paths(CHECKPOINT_PATH, TOKENIZER_PATH)
+        if not verify_paths(paths, logger):
+            raise Exception("Path verification failed")
 
-print(f"Le modèle et les données du tokenizer ont été chargés sur {repo_name}")
+        # Tentative de push vers le hub
+        tokenizer_file_path = paths['final_model'] / TOKENIZER_FILE
+        if push_to_hub(str(paths['checkpoint']), REPO_NAME, tokenizer_file_path, logger):
+            logger.info("Successfully pushed model to hub")
+        else:
+            raise Exception("Failed to push to hub")
 
-# Vérification des fichiers
-files = api.list_repo_files(repo_name)
-print("\nFichiers dans le dépôt:")
-for file in files:
-    print(f"- {file}")
+    except Exception as e:
+        logger.error(f"An error occurred: {str(e)}")
+        raise
 
-print("\nPour charger le modèle et le tokenizer plus tard:")
-print("""
-import json
-from transformers import AutoModelForCausalLM
-from huggingface_hub import hf_hub_download
-
-# Charger le modèle
-model = AutoModelForCausalLM.from_pretrained("Zual/chess")
-
-# Charger les données du tokenizer
-tokenizer_path = hf_hub_download(repo_id="Zual/chess", filename="tokenizer_data.json")
-with open(tokenizer_path, 'r', encoding='utf-8') as f:
-    tokenizer_data = json.load(f)
-
-# Créer une nouvelle instance du tokenizer
-tokenizer = ChessSquareTokenizer()
-tokenizer.vocab = tokenizer_data['vocab']
-tokenizer.ids_to_tokens = {int(k): v for k, v in tokenizer_data['ids_to_tokens'].items()}
-tokenizer.next_id = tokenizer_data['next_id']
-""")
+if __name__ == "__main__":
+    main()
