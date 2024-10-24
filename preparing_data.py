@@ -45,7 +45,7 @@ def decompress_zst(input_path, output_path):
     print(f'Fichier décompressé : {output_path}')
 
 # URL du fichier .zst
-file_url = "https://database.lichess.org/standard/lichess_db_standard_rated_2013-09.pgn.zst"
+file_url = "https://database.lichess.org/standard/lichess_db_standard_rated_2016-09.pgn.zst"
 
 # Chemin où sauvegarder le fichier
 save_path = "."
@@ -298,7 +298,7 @@ def read_pgn_file(file_path, max_games=None):
     return games, filtered_game_count, total_game_count
 
 # Chemin vers le fichier PGN
-pgn_file_path = "./lichess_db_standard_rated_2013-09.pgn"
+pgn_file_path = "./lichess_db_standard_rated_2016-09.pgn"
 
 # Lire les parties d'échecs
 print("Lecture du fichier PGN...")
