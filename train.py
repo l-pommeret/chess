@@ -12,7 +12,7 @@ def main():
     
     url = "https://database.lichess.org/standard/lichess_db_standard_rated_2016-09.pgn.zst"
     save_dir = "chess_data"
-    max_length = 400
+    max_length = 1024
 
     # Téléchargement et décompression
     downloader = ChessDataDownloader(url, save_dir)
