@@ -13,7 +13,7 @@ class ModelConfig:
 @dataclass
 class TrainingConfig:
     output_dir: str = "./models/gpt2-chess"
-    num_train_epochs: int = 0.01
+    num_train_epochs: int = 0.1
     per_device_train_batch_size: int = 64
     per_device_eval_batch_size: int = 64
     learning_rate: float = 1e-3
