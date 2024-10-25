@@ -1,89 +1,64 @@
-from transformers import GPT2LMHeadModel, GPT2Config, TrainingArguments, Trainer
-import torch
-from preparing_data import train_dataset, test_dataset, tokenizer
 import os
-import json
+from model import ChessGPT
+from trainer import ChessTrainer
+from config import ModelConfig, TrainingConfig, GenerationConfig
+from tokenizer import ChessTokenizer
+from dataset import create_datasets
+from downloader import ChessDataDownloader
+from parser import PGNParser
 
-# Création du dossier pour sauvegarder le modèle et le tokenizer
-model_save_dir = "./gpt2-chess-games"
-tokenizer_save_dir = os.path.join(model_save_dir, "tokenizer")
-os.makedirs(model_save_dir, exist_ok=True)
-os.makedirs(tokenizer_save_dir, exist_ok=True)
+def main():
+    # Chargement des données (supposons que train_dataset, test_dataset et tokenizer sont déjà créés)
+    
+    url = "https://database.lichess.org/standard/lichess_db_standard_rated_2016-09.pgn.zst"
+    save_dir = "chess_data"
+    max_length = 400
 
-# Sauvegarde des données du tokenizer
-tokenizer_data = {
-    'vocab': tokenizer.vocab,
-    'ids_to_tokens': tokenizer.ids_to_tokens,
-    'next_id': tokenizer.next_id
-}
+    # Téléchargement et décompression
+    downloader = ChessDataDownloader(url, save_dir)
+    zst_file = downloader.download()
+    pgn_file = downloader.decompress(zst_file)
 
-tokenizer_save_path = os.path.join(tokenizer_save_dir, "tokenizer_data.json")
-with open(tokenizer_save_path, 'w', encoding='utf-8') as f:
-    json.dump(tokenizer_data, f, ensure_ascii=False, indent=2)
+    # Initialisation du tokenizer
+    tokenizer = ChessTokenizer()
 
-# Initialisation du modèle
-config = GPT2Config(
-    vocab_size=len(tokenizer),
-    n_positions=600,
-    n_ctx=600,
-    n_embd=512,
-    n_layer=10,
-    n_head=8
-)
-model = GPT2LMHeadModel(config)
-print(config)
-print(model)
+    # Parsing des parties
+    parser = PGNParser(tokenizer)
+    games, filtered_count, total_count = parser.parse_file(pgn_file)
+    print(f"Parties filtrées : {filtered_count}/{total_count}")
 
-# Configuration de l'entraînement
-training_args = TrainingArguments(
-    output_dir=model_save_dir,
-    num_train_epochs=5,
-    per_device_train_batch_size=64,
-    per_device_eval_batch_size=64,
-    learning_rate=1e-3,
-    weight_decay=0.01,
-    logging_steps=50,
-    save_steps=10000,
-    eval_steps=50,
-    evaluation_strategy="steps",
-    load_best_model_at_end=True,
-    metric_for_best_model="loss",
-    lr_scheduler_type="linear",
-    warmup_steps=500,
-    fp16=True,
-)
+    # Création des datasets
+    train_dataset, test_dataset = create_datasets(games, tokenizer, max_length)
+    print(f"Dataset d'entraînement : {len(train_dataset)} parties")
+    print(f"Dataset de test : {len(test_dataset)} parties")
 
-# Configuration du Trainer
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=test_dataset,
-)
+    # Configuration
+    model_config = ModelConfig(vocab_size=len(tokenizer))
+    training_config = TrainingConfig()
+    generation_config = GenerationConfig()
+    
+    # Création du modèle
+    chess_gpt = ChessGPT(model_config, tokenizer)
+    
+    # Sauvegarde du tokenizer
+    chess_gpt.save_tokenizer(os.path.join(training_config.output_dir, "tokenizer"))
 
-print("Début de l'entraînement...")
-trainer.train()
-print("Entraînement terminé!")
-
-# Sauvegarde du modèle
-trainer.save_model()
-
-def generate_game(prompt, max_length=100):
-    input_ids = torch.tensor([tokenizer.encode(prompt)]).to(model.device)
-    output = model.generate(
-        input_ids,
-        max_length=max_length,
-        num_return_sequences=1,
-        no_repeat_ngram_size=2,
-        do_sample=True,
-        top_k=50,
-        top_p=0.95,
-        temperature=0.1,
-        pad_token_id=tokenizer.vocab['<PAD>']
+    # Configuration et lancement de l'entraînement
+    trainer = ChessTrainer(
+        model=chess_gpt.model,
+        train_dataset=train_dataset,
+        test_dataset=test_dataset,
+        config=training_config
     )
-    return tokenizer.decode(output[0].tolist())
+    
+    # Entraînement
+    trainer.train()
+    trainer.save_model()
+    
+    # Test de génération
+    prompt = "1.e4 c5 2.Nf3 d6 3.d4"
+    generated_game = chess_gpt.generate(prompt, generation_config)
+    print(f"Partie générée : {generated_game}")
 
-# Exemple de génération
-prompt = "1.e4 c5 2.Nf3 d6 3.d4"
-generated_game = generate_game(prompt)
-print(f"Partie générée : {generated_game}")
+if __name__ == "__main__":
+    main()
