@@ -45,6 +45,63 @@ class ChessTokenizer:
         print(f"Taille du vocabulaire: {len(self.vocab)}")
         print(f"Nombre de caractères valides: {len(self.valid_chars)}")
 
+    def is_valid_text(self, text: str) -> bool:
+        """
+        Vérifie si le texte ne contient que des caractères valides.
+        
+        Args:
+            text: Texte à vérifier
+            
+        Returns:
+            bool: True si le texte est valide, False sinon
+        """
+        # On nettoie d'abord le texte
+        text = self.clean_text(text)
+        
+        # On vérifie que tous les caractères sont valides
+        invalid_chars = set()
+        for char in text:
+            if char not in self.valid_chars:
+                invalid_chars.add(char)
+        
+        if invalid_chars:
+            print(f"Caractères invalides trouvés : {sorted(invalid_chars)}")
+            return False
+            
+        # On vérifie que le texte n'est pas vide après nettoyage
+        if not text.strip():
+            print("Texte vide après nettoyage")
+            return False
+            
+        # On vérifie que le texte contient au moins un coup d'échecs valide
+        if not re.search(r'\d+\.', text):
+            print("Aucun coup d'échecs trouvé")
+            return False
+            
+        return True
+
+# Vous pouvez aussi ajouter cette méthode debug pour aider au diagnostic :
+
+    def debug_text(self, text: str) -> None:
+        """
+        Affiche des informations de debug sur le texte.
+        
+        Args:
+            text: Texte à analyser
+        """
+        print("\nDEBUG TEXT:")
+        print("Texte original:", text)
+        print("Longueur:", len(text))
+        print("Caractères uniques:", sorted(set(text)))
+        
+        cleaned = self.clean_text(text)
+        print("\nTexte nettoyé:", cleaned)
+        print("Longueur après nettoyage:", len(cleaned))
+        print("Caractères uniques après nettoyage:", sorted(set(cleaned)))
+        
+        invalid_chars = set(char for char in text if char not in self.valid_chars)
+        print("\nCaractères invalides:", sorted(invalid_chars))
+
     def _initialize_vocab(self) -> None:
         """Initialise le vocabulaire avec tous les tokens nécessaires."""
         # 1. Squares (e4, a1, etc.)
