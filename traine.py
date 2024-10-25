@@ -2,12 +2,36 @@ import os
 from .model import ChessGPT
 from .trainer import ChessTrainer
 from .config import ModelConfig, TrainingConfig, GenerationConfig
+from tokenizer import ChessTokenizer
+from .dataset import create_datasets
+from downloader import ChessDataDownloader
+from parser import PGNParser
 
 def main():
     # Chargement des données (supposons que train_dataset, test_dataset et tokenizer sont déjà créés)
-    from .dataset import create_datasets
-    from .tokenizer import ChessTokenizer
     
+    url = "https://database.lichess.org/standard/lichess_db_standard_rated_2016-09.pgn.zst"
+    save_dir = "chess_data"
+    max_length = 600
+
+    # Téléchargement et décompression
+    downloader = ChessDataDownloader(url, save_dir)
+    zst_file = downloader.download()
+    pgn_file = downloader.decompress(zst_file)
+
+    # Initialisation du tokenizer
+    tokenizer = ChessTokenizer()
+
+    # Parsing des parties
+    parser = PGNParser(tokenizer)
+    games, filtered_count, total_count = parser.parse_file(pgn_file)
+    print(f"Parties filtrées : {filtered_count}/{total_count}")
+
+    # Création des datasets
+    train_dataset, test_dataset = create_datasets(games, tokenizer, max_length)
+    print(f"Dataset d'entraînement : {len(train_dataset)} parties")
+    print(f"Dataset de test : {len(test_dataset)} parties")
+
     # Configuration
     model_config = ModelConfig(vocab_size=len(tokenizer))
     training_config = TrainingConfig()
@@ -18,7 +42,7 @@ def main():
     
     # Sauvegarde du tokenizer
     chess_gpt.save_tokenizer(os.path.join(training_config.output_dir, "tokenizer"))
-    
+
     # Configuration et lancement de l'entraînement
     trainer = ChessTrainer(
         model=chess_gpt.model,

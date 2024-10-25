@@ -3,6 +3,8 @@ from transformers import Trainer, TrainingArguments
 from typing import Optional
 import torch
 
+from config import TrainingConfig
+
 class ChessTrainer:
     def __init__(self, model, train_dataset, test_dataset, config: TrainingConfig):
         self.model = model

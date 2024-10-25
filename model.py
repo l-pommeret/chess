@@ -2,6 +2,9 @@ import torch
 from transformers import GPT2LMHeadModel, GPT2Config
 from typing import Dict
 
+from config import ModelConfig
+from config import GenerationConfig
+
 class ChessGPT:
     def __init__(self, config: ModelConfig, tokenizer):
         self.tokenizer = tokenizer
