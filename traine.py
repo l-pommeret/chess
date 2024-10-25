@@ -10,7 +10,7 @@ from parser import PGNParser
 def main():
     # Chargement des données (supposons que train_dataset, test_dataset et tokenizer sont déjà créés)
     
-    url = "https://database.lichess.org/standard/lichess_db_standard_rated_2013-09.pgn.zst"
+    url = "https://database.lichess.org/standard/lichess_db_standard_rated_2016-09.pgn.zst"
     save_dir = "chess_data"
     max_length = 400
 
