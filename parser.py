@@ -1,4 +1,3 @@
-# parser.py
 import re
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
@@ -16,10 +15,10 @@ class ChessGame:
 class PGNParser:
     """Parse et filtre les fichiers PGN avec logging détaillé."""
     
-    def __init__(self, tokenizer, min_elo: int = 1500,  # Baissé de 1800 à 1500
-                 min_moves: int = 5,    # Baissé de 10 à 5
-                 max_moves: int = 100,  # Augmenté de 60 à 100
-                 min_time_control: float = 1.0):  # Baissé de 3.0 à 1.0
+    def __init__(self, tokenizer, min_elo: int = 1800,  # Elo min
+                 min_moves: int = 10,    
+                 max_moves: int = 60, 
+                 min_time_control: float = 3.0): 
         self.tokenizer = tokenizer
         self.min_elo = min_elo
         self.min_moves = min_moves
