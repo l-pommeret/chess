@@ -1,355 +1,181 @@
-import requests
 import os
+import re
+import torch
+import requests
 import zstandard as zstd
 from tqdm import tqdm
+from torch.utils.data import Dataset, random_split
+from dataclasses import dataclass
+from typing import List, Tuple, Dict, Optional
 
-def download_file(url, save_path):
-    local_filename = url.split('/')[-1]
-    full_path = os.path.join(save_path, local_filename)
+@dataclass
+class ChessGame:
+    moves: str
+    white_elo: int
+    black_elo: int
+    time_control: float
+    num_moves: int
 
-    response = requests.get(url, stream=True)
-    total_size = int(response.headers.get('content-length', 0))
+class ChessDataDownloader:
+    def __init__(self, url: str, save_path: str = "."):
+        self.url = url
+        self.save_path = save_path
 
-    with open(full_path, 'wb') as file, tqdm(
-        desc=local_filename,
-        total=total_size,
-        unit='iB',
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as progress_bar:
-        for data in response.iter_content(chunk_size=1024):
-            size = file.write(data)
-            progress_bar.update(size)
+    def download(self) -> str:
+        local_filename = self.url.split('/')[-1]
+        full_path = os.path.join(self.save_path, local_filename)
 
-    return full_path
+        response = requests.get(self.url, stream=True)
+        total_size = int(response.headers.get('content-length', 0))
 
-def decompress_zst(input_path, output_path):
-    dctx = zstd.ZstdDecompressor()
-    input_size = os.path.getsize(input_path)
+        with open(full_path, 'wb') as file, tqdm(
+            desc=f"Downloading {local_filename}",
+            total=total_size,
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as pbar:
+            for data in response.iter_content(chunk_size=1024):
+                size = file.write(data)
+                pbar.update(size)
 
-    with open(input_path, 'rb') as ifh, open(output_path, 'wb') as ofh, tqdm(
-        desc="Décompression",
-        total=input_size,
-        unit='iB',
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as progress_bar:
-        reader = dctx.stream_reader(ifh)
-        while True:
-            chunk = reader.read(8192)
-            if not chunk:
-                break
-            ofh.write(chunk)
-            progress_bar.update(len(chunk))
+        return full_path
 
-    print(f'Fichier décompressé : {output_path}')
+    def decompress(self, input_path: str) -> str:
+        output_path = input_path.rsplit('.', 1)[0]
+        dctx = zstd.ZstdDecompressor()
+        
+        with open(input_path, 'rb') as ifh, \
+             open(output_path, 'wb') as ofh, \
+             tqdm(desc="Decompressing", unit='iB', unit_scale=True) as pbar:
+            reader = dctx.stream_reader(ifh)
+            while True:
+                chunk = reader.read(8192)
+                if not chunk:
+                    break
+                ofh.write(chunk)
+                pbar.update(len(chunk))
 
-# URL du fichier .zst
-file_url = "https://database.lichess.org/standard/lichess_db_standard_rated_2016-09.pgn.zst"
-
-# Chemin où sauvegarder le fichier
-save_path = "."
-
-print("Téléchargement du fichier...")
-downloaded_file = download_file(file_url, save_path)
-
-print("Décompression du fichier...")
-output_file = downloaded_file.rsplit('.', 1)[0]  # Retire l'extension .zst
-decompress_zst(downloaded_file, output_file)
-
-print(f"Le fichier PGN est prêt à être utilisé : {output_file}")
-
-# Optionnel : supprimer le fichier .zst après décompression
-# os.remove(downloaded_file)
-# print(f"Fichier compressé supprimé : {downloaded_file}")
-
-import re
-from tqdm import tqdm
-import os
+        return output_path
 
 class ChessSquareTokenizer:
     def __init__(self):
         self.vocab = {'<PAD>': 0, '<UNK>': 1}
         self.ids_to_tokens = {0: '<PAD>', 1: '<UNK>'}
-        self.next_id = 2
+        self._initialize_squares()
 
-        # Préparation des tokens pour toutes les cases possibles
-        files = 'abcdefgh'
-        ranks = '12345678'
-        for f in files:
-            for r in ranks:
-                square = f + r
-                self.vocab[square] = self.next_id
-                self.ids_to_tokens[self.next_id] = square
-                self.next_id += 1
+    def _initialize_squares(self):
+        next_id = 2
+        for file in 'abcdefgh':
+            for rank in '12345678':
+                square = file + rank
+                self.vocab[square] = next_id
+                self.ids_to_tokens[next_id] = square
+                next_id += 1
+        self.next_id = next_id
 
-    def build_vocab(self, texts):
-        # Pattern pour identifier les cases d'échecs
-        square_pattern = r'[a-h][1-8]'
-
-        for text in texts:
-            tokens = []
-            last_end = 0
-            for match in re.finditer(square_pattern, text):
-                start, end = match.span()
-                if start > last_end:
-                    tokens.extend(list(text[last_end:start]))
-                tokens.append(match.group())
-                last_end = end
-            if last_end < len(text):
-                tokens.extend(list(text[last_end:]))
-
-            for token in tokens:
-                if token not in self.vocab and len(token) == 1:
-                    self.vocab[token] = self.next_id
-                    self.ids_to_tokens[self.next_id] = token
-                    self.next_id += 1
-
-        print(f"Taille du vocabulaire: {len(self.vocab)}")
-
-    def tokenize(self, text):
+    def tokenize(self, text: str) -> List[str]:
         tokens = []
         last_end = 0
-        square_pattern = r'[a-h][1-8]'
-
-        for match in re.finditer(square_pattern, text):
+        for match in re.finditer(r'[a-h][1-8]', text):
             start, end = match.span()
             if start > last_end:
                 tokens.extend(list(text[last_end:start]))
             tokens.append(match.group())
             last_end = end
-
         if last_end < len(text):
             tokens.extend(list(text[last_end:]))
-
         return tokens
 
-    def convert_tokens_to_ids(self, tokens):
-        return [self.vocab.get(token, self.vocab['<UNK>']) for token in tokens]
+    def encode(self, text: str) -> List[int]:
+        return [self.vocab.get(token, self.vocab['<UNK>']) for token in self.tokenize(text)]
 
-    def convert_ids_to_tokens(self, ids):
-        return [self.ids_to_tokens[id] for id in ids]
-
-    def encode(self, text):
-        return self.convert_tokens_to_ids(self.tokenize(text))
-
-    def decode(self, ids):
+    def decode(self, ids: List[int]) -> str:
         return ''.join(self.convert_ids_to_tokens(ids))
 
-    @property
-    def vocab_size(self):
-        return len(self.vocab)
-
-    def __len__(self):
-        return len(self.vocab)
-    
-    import re
-from tqdm import tqdm
-import os
-
-class ChessSquareTokenizer:
-    def __init__(self):
-        self.vocab = {'<PAD>': 0, '<UNK>': 1}
-        self.ids_to_tokens = {0: '<PAD>', 1: '<UNK>'}
-        self.next_id = 2
-
-        # Préparation des tokens pour toutes les cases possibles
-        files = 'abcdefgh'
-        ranks = '12345678'
-        for f in files:
-            for r in ranks:
-                square = f + r
-                self.vocab[square] = self.next_id
-                self.ids_to_tokens[self.next_id] = square
-                self.next_id += 1
-
-    def build_vocab(self, texts):
-        # Pattern pour identifier les cases d'échecs
-        square_pattern = r'[a-h][1-8]'
-
-        for text in texts:
-            tokens = []
-            last_end = 0
-            for match in re.finditer(square_pattern, text):
-                start, end = match.span()
-                if start > last_end:
-                    tokens.extend(list(text[last_end:start]))
-                tokens.append(match.group())
-                last_end = end
-            if last_end < len(text):
-                tokens.extend(list(text[last_end:]))
-
-            for token in tokens:
-                if token not in self.vocab and len(token) == 1:
-                    self.vocab[token] = self.next_id
-                    self.ids_to_tokens[self.next_id] = token
-                    self.next_id += 1
-
-        print(f"Taille du vocabulaire: {len(self.vocab)}")
-
-    def tokenize(self, text):
-        tokens = []
-        last_end = 0
-        square_pattern = r'[a-h][1-8]'
-
-        for match in re.finditer(square_pattern, text):
-            start, end = match.span()
-            if start > last_end:
-                tokens.extend(list(text[last_end:start]))
-            tokens.append(match.group())
-            last_end = end
-
-        if last_end < len(text):
-            tokens.extend(list(text[last_end:]))
-
-        return tokens
-
-    def convert_tokens_to_ids(self, tokens):
-        return [self.vocab.get(token, self.vocab['<UNK>']) for token in tokens]
-
-    def convert_ids_to_tokens(self, ids):
+    def convert_ids_to_tokens(self, ids: List[int]) -> List[str]:
         return [self.ids_to_tokens[id] for id in ids]
 
-    def encode(self, text):
-        return self.convert_tokens_to_ids(self.tokenize(text))
-
-    def decode(self, ids):
-        return ''.join(self.convert_ids_to_tokens(ids))
-
     @property
-    def vocab_size(self):
+    def vocab_size(self) -> int:
         return len(self.vocab)
 
-    def __len__(self):
-        return len(self.vocab)
+class PGNParser:
+    def __init__(self, min_elo: int = 1800, min_moves: int = 10, max_moves: int = 60, 
+                 min_time_control: float = 3.0):
+        self.min_elo = min_elo
+        self.min_moves = min_moves
+        self.max_moves = max_moves
+        self.min_time_control = min_time_control
 
-def optimize_pgn(pgn_text):
-    optimized = re.sub(r'(\d+\.) +', r'\1', pgn_text)
-    optimized = re.sub(r' +', ' ', optimized)
-    return optimized.strip()
+    @staticmethod
+    def _optimize_pgn(pgn_text: str) -> str:
+        optimized = re.sub(r'(\d+\.) +', r'\1', pgn_text)
+        return re.sub(r' +', ' ', optimized).strip()
 
-def parse_time_control(line):
-    """Parse la ligne de contrôle du temps et retourne le temps initial en minutes"""
-    match = re.search(r'\[TimeControl "(\d+)\+(\d+)"\]', line)
-    if match:
-        initial_time = int(match.group(1))
-        increment = int(match.group(2))
-        return initial_time / 60  # Convertir en minutes
-    return None
-
-def read_pgn_file(file_path, max_games=None):
-    games = []
-    current_game = []
-    game_count = 0
-    filtered_game_count = 0
-    total_game_count = 0
-    in_header = True
-    white_elo = black_elo = 0
-    num_moves = 0
-    time_control = None
-
-    def parse_elo(line):
-        match = re.search(r'\[(\w+)Elo "(\d+)"\]', line)
+    @staticmethod
+    def _parse_time_control(line: str) -> Optional[float]:
+        match = re.search(r'\[TimeControl "(\d+)\+(\d+)"\]', line)
         if match:
-            return int(match.group(2))
-        return 0
+            return int(match.group(1)) / 60
+        return None
 
-    with open(file_path, 'r', encoding='utf-8') as file:
-        for line in tqdm(file, desc="Lecture du fichier PGN"):
-            line = line.strip()
-            if line.startswith('[') and line.endswith(']'):
-                if not in_header:
-                    total_game_count += 1
-                    # Vérifier tous les critères de filtrage
-                    if (current_game and
-                        white_elo > 1800 and black_elo > 1800 and
-                        10 <= num_moves <= 60 and
-                        time_control is not None and time_control >= 3):  # Ajouter le filtre de temps
-                        games.append(optimize_pgn(' '.join(current_game)))
-                        filtered_game_count += 1
-                        game_count += 1
-                        if max_games and game_count >= max_games:
+    @staticmethod
+    def _parse_elo(line: str) -> int:
+        match = re.search(r'\[(\w+)Elo "(\d+)"\]', line)
+        return int(match.group(2)) if match else 0
+
+    def parse_file(self, file_path: str, max_games: Optional[int] = None) -> Tuple[List[str], int, int]:
+        games = []
+        current_game = []
+        game_count = filtered_count = total_count = 0
+        
+        with open(file_path, 'r', encoding='utf-8') as file:
+            current = ChessGame(moves="", white_elo=0, black_elo=0, time_control=0, num_moves=0)
+            
+            for line in tqdm(file, desc="Parsing PGN"):
+                line = line.strip()
+                if line.startswith('['):
+                    if "WhiteElo" in line:
+                        current.white_elo = self._parse_elo(line)
+                    elif "BlackElo" in line:
+                        current.black_elo = self._parse_elo(line)
+                    elif "TimeControl" in line:
+                        current.time_control = self._parse_time_control(line) or 0
+                elif line:
+                    current_game.append(line)
+                    current.num_moves += line.count('.')
+                elif current_game:
+                    total_count += 1
+                    if self._is_valid_game(current):
+                        games.append(self._optimize_pgn(' '.join(current_game)))
+                        filtered_count += 1
+                        if max_games and filtered_count >= max_games:
                             break
                     current_game = []
-                    white_elo = black_elo = 0
-                    num_moves = 0
-                    time_control = None
-                in_header = True
-                if "WhiteElo" in line:
-                    white_elo = parse_elo(line)
-                elif "BlackElo" in line:
-                    black_elo = parse_elo(line)
-                elif "TimeControl" in line:
-                    time_control = parse_time_control(line)
-            elif line:
-                in_header = False
-                current_game.append(line)
-                num_moves += line.count('.')
+                    current = ChessGame(moves="", white_elo=0, black_elo=0, time_control=0, num_moves=0)
 
-    # Traiter la dernière partie
-    if (current_game and
-        white_elo > 1800 and black_elo > 1800 and
-        10 <= num_moves <= 60 and
-        time_control is not None and time_control >= 3):
-        games.append(optimize_pgn(' '.join(current_game)))
-        filtered_game_count += 1
-        total_game_count += 1
+        return games, filtered_count, total_count
 
-    return games, filtered_game_count, total_game_count
-
-# Chemin vers le fichier PGN
-pgn_file_path = "./lichess_db_standard_rated_2016-09.pgn"
-
-# Lire les parties d'échecs
-print("Lecture du fichier PGN...")
-chess_games, filtered_count, total_count = read_pgn_file(pgn_file_path, max_games=None)
-
-# Créer et entraîner le tokenizer
-tokenizer = ChessSquareTokenizer()
-print("Construction du vocabulaire...")
-tokenizer.build_vocab(chess_games)
-
-# Tokenize toutes les parties et trouve la plus longue
-print("Tokenization des parties...")
-max_tokens = 0
-for game in tqdm(chess_games, desc="Tokenization"):
-    tokens = tokenizer.encode(game)
-    max_tokens = max(max_tokens, len(tokens))
-
-# Afficher les statistiques
-print(f"\nNombre total de parties lues: {total_count}")
-print(f"Nombre de parties après filtrage: {filtered_count}")
-print(f"Taille du vocabulaire: {tokenizer.vocab_size}")
-print(f"Nombre de tokens de la plus longue partie: {max_tokens}")
-
-# Exemple d'utilisation
-if chess_games:
-    print("\nExemple d'utilisation du tokenizer:")
-    example_game = chess_games[0]
-    encoded_game = tokenizer.encode(example_game)
-    print(f"Longueur de la partie encodée: {len(encoded_game)}")
-    print(f"Premiers 100 tokens encodés: {encoded_game[:100]}")
-    decoded_game = tokenizer.decode(encoded_game[:100])
-    print(f"\nDécodage des 100 premiers tokens:\n{decoded_game}")
-    print(f"\nDébut d'une partie d'échecs (sans en-tête):\n{chess_games[0][:200]}...")
-else:
-    print("Aucune partie n'a été trouvée qui corresponde aux critères de filtrage.")
-
-import torch
-from torch.utils.data import Dataset
+    def _is_valid_game(self, game: ChessGame) -> bool:
+        return (game.white_elo > self.min_elo and 
+                game.black_elo > self.min_elo and
+                self.min_moves <= game.num_moves <= self.max_moves and
+                game.time_control >= self.min_time_control)
 
 class ChessGameDataset(Dataset):
-    def __init__(self, games, tokenizer, max_length):
+    def __init__(self, games: List[str], tokenizer: ChessSquareTokenizer, max_length: int):
         self.games = games
         self.tokenizer = tokenizer
         self.max_length = max_length
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.games)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         game = self.games[idx]
         encoded = self.tokenizer.encode(game)
+        
         if len(encoded) > self.max_length:
             encoded = encoded[:self.max_length]
         else:
@@ -359,47 +185,13 @@ class ChessGameDataset(Dataset):
             'input_ids': torch.tensor(encoded),
             'labels': torch.tensor(encoded)
         }
+
+def create_datasets(games: List[str], tokenizer: ChessSquareTokenizer, 
+                   max_length: int, test_ratio: float = 0.0005) -> Tuple[Dataset, Dataset]:
+    test_size = int(test_ratio * len(games))
+    train_size = len(games) - test_size
     
-import random
-from torch.utils.data import random_split
-
-# Assurez-vous que chess_games est défini (résultat de read_pgn_file)
-# Si ce n'est pas le cas, exécutez d'abord le code de lecture du fichier PGN
-
-# Mélange aléatoire des parties
-random.shuffle(chess_games)
-
-# Calcul de la taille du test dataset (0,5% des données)
-test_size = int(0.0005 * len(chess_games))
-train_size = len(chess_games) - test_size
-
-# Création des datasets
-train_dataset = ChessGameDataset(chess_games[:train_size], tokenizer, max_length=600)
-test_dataset = ChessGameDataset(chess_games[train_size:], tokenizer, max_length=600)
-
-# Affichage des tailles des datasets
-print(f"Taille du train dataset : {len(train_dataset)}")
-print(f"Taille du test dataset : {len(test_dataset)}")
-
-import random
-
-# Sélectionner un index aléatoire
-random_index = random.randint(0, len(train_dataset) - 1)
-
-# Récupérer le datapoint aléatoire
-random_datapoint = train_dataset[random_index]
-
-# Décoder et afficher la partie d'échecs originale
-decoded_game = tokenizer.decode(random_datapoint['input_ids'].tolist())
-print("\nPartie d'échecs décodée:")
-print(decoded_game.strip())  # strip() pour enlever les PAD à la fin
-
-# Afficher quelques statistiques
-print("\nStatistiques:")
-print(f"Longueur de la partie: {len(decoded_game.strip())} caractères")
-print(f"Nombre de tokens: {len(random_datapoint['input_ids'])}")
-
-# Afficher les 10 premiers caractères du vocabulaire (en excluant <PAD> et <UNK>)
-print("\nExemple de caractères dans le vocabulaire:")
-print(list(tokenizer.vocab.keys())[2:12])
-
+    train_data = ChessGameDataset(games[:train_size], tokenizer, max_length)
+    test_data = ChessGameDataset(games[train_size:], tokenizer, max_length)
+    
+    return train_data, test_data
