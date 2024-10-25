@@ -6,7 +6,7 @@ import zstandard as zstd
 from tqdm import tqdm
 from torch.utils.data import Dataset, random_split
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Optional, Set
+from typing import List, Tuple, Dict, Optional
 
 @dataclass
 class ChessGame:
@@ -15,6 +15,48 @@ class ChessGame:
     black_elo: int
     time_control: float
     num_moves: int
+
+class ChessDataDownloader:
+    def __init__(self, url: str, save_path: str = "."):
+        self.url = url
+        self.save_path = save_path
+
+    def download(self) -> str:
+        local_filename = self.url.split('/')[-1]
+        full_path = os.path.join(self.save_path, local_filename)
+
+        response = requests.get(self.url, stream=True)
+        total_size = int(response.headers.get('content-length', 0))
+
+        with open(full_path, 'wb') as file, tqdm(
+            desc=f"Downloading {local_filename}",
+            total=total_size,
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as pbar:
+            for data in response.iter_content(chunk_size=1024):
+                size = file.write(data)
+                pbar.update(size)
+
+        return full_path
+
+    def decompress(self, input_path: str) -> str:
+        output_path = input_path.rsplit('.', 1)[0]
+        dctx = zstd.ZstdDecompressor()
+        
+        with open(input_path, 'rb') as ifh, \
+             open(output_path, 'wb') as ofh, \
+             tqdm(desc="Decompressing", unit='iB', unit_scale=True) as pbar:
+            reader = dctx.stream_reader(ifh)
+            while True:
+                chunk = reader.read(8192)
+                if not chunk:
+                    break
+                ofh.write(chunk)
+                pbar.update(len(chunk))
+
+        return output_path
 
 class ChessSquareTokenizer:
     def __init__(self):
