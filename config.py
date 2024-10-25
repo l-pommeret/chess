@@ -6,14 +6,14 @@ class ModelConfig:
     vocab_size: int
     n_positions: int = 400
     n_ctx: int = 400
-    n_embd: int = 512
-    n_layer: int = 10
+    n_embd: int = 256
+    n_layer: int = 20
     n_head: int = 8
 
 @dataclass
 class TrainingConfig:
     output_dir: str = "./models/gpt2-chess"
-    num_train_epochs: int = 0.1
+    num_train_epochs: int = 5
     per_device_train_batch_size: int = 64
     per_device_eval_batch_size: int = 64
     learning_rate: float = 1e-3
