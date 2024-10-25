@@ -1,9 +1,9 @@
 import os
-from .model import ChessGPT
-from .trainer import ChessTrainer
-from .config import ModelConfig, TrainingConfig, GenerationConfig
+from model import ChessGPT
+from trainer import ChessTrainer
+from config import ModelConfig, TrainingConfig, GenerationConfig
 from tokenizer import ChessTokenizer
-from .dataset import create_datasets
+from dataset import create_datasets
 from downloader import ChessDataDownloader
 from parser import PGNParser
 
