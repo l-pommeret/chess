@@ -49,7 +49,7 @@ class ChessTokenizer:
             self._add_token(char)
 
         # 4. Caractères de formatage
-        format_chars = set(' \n\t(),[]{}"\'/!')
+        format_chars = set(' \n\t(),[]"\'/!')
         self.valid_chars.update(format_chars)
         for char in format_chars:
             self._add_token(char)
