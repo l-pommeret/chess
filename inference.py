@@ -2,11 +2,13 @@
 
 import torch
 from transformers import AutoModelForCausalLM, AutoConfig
+from huggingface_hub import hf_hub_download
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 import logging
 import json
 from pathlib import Path
+import os
 
 @dataclass
 class InferenceConfig:
@@ -26,18 +28,11 @@ class ChessGenerator:
     """Générateur de parties d'échecs utilisant un modèle HuggingFace."""
     
     def __init__(self, config: InferenceConfig):
-        """
-        Initialise le générateur.
-        
-        Args:
-            config: Configuration pour l'inférence
-        """
         self.config = config
         self.logger = self._setup_logging()
         self.model, self.tokenizer = self._load_model()
 
     def _setup_logging(self) -> logging.Logger:
-        """Configure le logging."""
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s'
@@ -45,7 +40,7 @@ class ChessGenerator:
         return logging.getLogger(__name__)
 
     def _load_model(self):
-        """Charge le modèle et le tokenizer depuis HuggingFace."""
+        """Charge le modèle et le tokenizer depuis HuggingFace Hub."""
         try:
             self.logger.info(f"Loading model from {self.config.model_name}")
             
@@ -57,10 +52,14 @@ class ChessGenerator:
             model.to(self.config.device)
             model.eval()
             
-            # Chargement du tokenizer personnalisé
-            tokenizer_file = f"tokenizer.json"
-            tokenizer_path = Path(self.config.model_name) / tokenizer_file
+            # Téléchargement du fichier tokenizer depuis HF Hub
+            tokenizer_path = hf_hub_download(
+                repo_id=self.config.model_name,
+                filename="tokenizer.json",
+                repo_type="model"
+            )
             
+            # Chargement du tokenizer personnalisé
             with open(tokenizer_path, 'r') as f:
                 tokenizer_data = json.load(f)
             
@@ -68,6 +67,8 @@ class ChessGenerator:
             from tokenizer import ChessTokenizer, TokenizerConfig
             tokenizer_config = TokenizerConfig()
             tokenizer = ChessTokenizer(tokenizer_config)
+            
+            # Configuration du tokenizer avec les données chargées
             tokenizer.vocab = tokenizer_data['vocab']
             tokenizer.id2token = {int(k): v for k, v in tokenizer_data['id2token'].items()}
             tokenizer.valid_chars = set(tokenizer_data['valid_chars'])
@@ -79,15 +80,7 @@ class ChessGenerator:
             raise
 
     def generate(self, prompt: str) -> List[str]:
-        """
-        Génère une suite à un début de partie d'échecs.
-        
-        Args:
-            prompt: Début de la partie d'échecs
-            
-        Returns:
-            Liste des continuations générées
-        """
+        """Génère une suite à un début de partie d'échecs."""
         try:
             # Encodage du prompt
             inputs = torch.tensor([self.tokenizer.encode(prompt)]).to(self.config.device)
@@ -128,41 +121,28 @@ class ChessGenerator:
             raise
 
     def validate_game(self, game: str) -> bool:
-        """
-        Valide une partie d'échecs générée.
-        
-        Args:
-            game: Partie d'échecs à valider
-            
-        Returns:
-            True si la partie est valide, False sinon
-        """
-        # Vérifie que la partie contient des coups valides
-        if not any(char.isdigit() for char in game):
+        """Valide une partie d'échecs générée."""
+        try:
+            # Vérifie que la partie contient des coups valides
+            if not any(char.isdigit() for char in game):
+                return False
+                
+            # Vérifie qu'il y a au moins un coup
+            if not '.' in game:
+                return False
+                
+            # Vérifie que la partie se termine correctement
+            valid_endings = {'1-0', '0-1', '1/2-1/2', '*'}
+            if not any(ending in game for ending in valid_endings):
+                return False
+                
+            return True
+        except Exception as e:
+            self.logger.error(f"Error validating game: {str(e)}")
             return False
-            
-        # Vérifie qu'il y a au moins un coup
-        if not '.' in game:
-            return False
-            
-        # Vérifie que la partie se termine correctement
-        valid_endings = {'1-0', '0-1', '1/2-1/2', '*'}
-        if not any(ending in game for ending in valid_endings):
-            return False
-            
-        return True
 
     def generate_valid_game(self, prompt: str, max_attempts: int = 5) -> Optional[str]:
-        """
-        Génère une partie d'échecs valide.
-        
-        Args:
-            prompt: Début de la partie
-            max_attempts: Nombre maximum de tentatives
-            
-        Returns:
-            Partie d'échecs valide ou None si échec
-        """
+        """Génère une partie d'échecs valide."""
         for attempt in range(max_attempts):
             self.logger.info(f"Generation attempt {attempt + 1}/{max_attempts}")
             
