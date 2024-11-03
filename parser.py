@@ -15,9 +15,9 @@ class ChessGame:
 class PGNParser:
     """Parse et filtre les fichiers PGN avec logging détaillé."""
     
-    def __init__(self, tokenizer, min_elo: int = 1800,  # Elo min
+    def __init__(self, tokenizer, min_elo: int = 1500,  # Elo min
                  min_moves: int = 10,    
-                 max_moves: int = 120, 
+                 max_moves: int = 200, 
                  min_time_control: float = 3.0): 
         self.tokenizer = tokenizer
         self.min_elo = min_elo
