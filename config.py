@@ -19,7 +19,7 @@ class TrainingConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 0.01
     logging_steps: int = 50
-    save_steps: int = 10000
+    save_steps: int = 1000
     eval_steps: int = 200
     warmup_steps: int = 500
     fp16: bool = True

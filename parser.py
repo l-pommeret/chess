@@ -17,7 +17,7 @@ class PGNParser:
     
     def __init__(self, tokenizer, min_elo: int = 1500,  # Elo min
                  min_moves: int = 10,    
-                 max_moves: int = 200, 
+                 max_moves: int = 300, 
                  min_time_control: float = 3.0): 
         self.tokenizer = tokenizer
         self.min_elo = min_elo
